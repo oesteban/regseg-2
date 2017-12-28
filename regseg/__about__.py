@@ -2,13 +2,15 @@
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """
-MRIQC
+RegSeg2
 """
 
 from datetime import date
 from ._version import get_versions
 __version__ = get_versions()['version']
 del get_versions
+
+PACKAGE_NAME = 'regseg'
 
 __author__ = 'Oscar Esteban'
 __email__ = 'code@oscaresteban.es'
@@ -25,11 +27,11 @@ __longdesc__ = ('RegSeg is an image joint segmentation-registration method that 
                 'in a way that the parametric properties of the regions defined by '
                 'the surfaces are best fitted.')
 
-__url__ = 'http://regseg.readthedocs.org/'
-__download__ = ('https://github.com/oesteban/regseg-2/archive/'
-                '{}.tar.gz'.format(__version__))
+__url__ = 'http://{}.readthedocs.org/'.format(PACKAGE_NAME)
+__download__ = ('https://github.com/oesteban/{}-2/archive/'
+                '{}.tar.gz').format(PACKAGE_NAME, __version__)
 
-PACKAGE_NAME = 'mriqc'
+
 CLASSIFIERS = [
     'Development Status :: 3 - Alpha',
     'Intended Audience :: Science/Research',
