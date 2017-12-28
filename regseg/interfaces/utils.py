@@ -134,7 +134,7 @@ def _aseg_add_outer(in_aseg, brainmask, newlabel=5000, newpath=None):
     asegnii = nb.load(in_aseg)
     aseg = asegnii.get_data()
 
-    bmsk = nb.load(brainmask).get_data().astype(np.uint8)
+    bmsk = nb.load(brainmask).get_data().astype(int)
     bmsk[bmsk > 0] = newlabel
     bmsk[bmsk < newlabel] = 0
 
