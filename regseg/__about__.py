@@ -15,11 +15,11 @@ PACKAGE_NAME = 'regseg'
 __author__ = 'Oscar Esteban'
 __email__ = 'code@oscaresteban.es'
 __maintainer__ = 'Oscar Esteban'
-__copyright__ = ('Copyright %d, Oscar Esteban and Center for Reproducible Neuroscience, '
-                 'Stanford University') % date.today().year
-__credits__ = 'Oscar Esteban'
-__license__ = '3-clause BSD'
-__status__ = 'Prototype'
+__copyright__ = ('Copyright %d, %s and Center for Reproducible Neuroscience, '
+                 'Stanford University') % (date.today().year, __author__)
+__credits__ = __author__
+__license__ = 'MIT License'
+__status__ = '3 - Alpha'
 __description__ = 'Surface-driven 3D image registration in python'
 __longdesc__ = ('RegSeg is an image joint segmentation-registration method that '
                 'maps surfaces into volumetric, multivariate 3D data. The surfaces '
@@ -33,10 +33,10 @@ __download__ = ('https://github.com/oesteban/{}-2/archive/'
 
 
 CLASSIFIERS = [
-    'Development Status :: 3 - Alpha',
+    'Development Status :: %s' % __status__,
     'Intended Audience :: Science/Research',
     'Topic :: Scientific/Engineering :: Image Recognition',
-    'License :: OSI Approved :: BSD License',
+    'License :: OSI Approved :: %s' % __license__,
     'Programming Language :: Python :: 3.5',
     'Programming Language :: Python :: 3.6',
 ]
