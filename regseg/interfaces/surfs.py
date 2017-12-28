@@ -9,7 +9,7 @@ import os
 import numpy as np
 import nibabel as nb
 
-from niworkflows.nipype.interfaces.base import (
+from nipype.interfaces.base import (
     BaseInterfaceInputSpec, TraitedSpec, File, isdefined,
     SimpleInterface
 )

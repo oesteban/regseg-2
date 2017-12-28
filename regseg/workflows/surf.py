@@ -15,7 +15,7 @@ from nipype.interfaces import freesurfer as fs  # Freesurfer
 from ..interfaces import Binarize, NormalizeSurf, FillMask
 
 
-def extract_surface(name='GenSurface'):
+def extract_surfaces(name='GenSurface'):
     """
     A nipype workflow for surface extraction from ``labels`` in a segmentation.
 
@@ -41,7 +41,7 @@ freesurfer/2013-June/030586.html>
 
     binarize = pe.MapNode(Binarize(), name='BinarizeLabels',
                           iterfield=['match'])
-    fill = pe.MapNode(niu.FillMask(), name='FillMask', iterfield=['in_file'])
+    fill = pe.MapNode(FillMask(), name='FillMask', iterfield=['in_file'])
     pretess = pe.MapNode(fs.MRIPretess(label=1), name='PreTess',
                          iterfield=['in_filled'])
     tess = pe.MapNode(fs.MRITessellate(label_value=1), name='tess',
@@ -85,7 +85,7 @@ def extract_surfaces_model(model='bold', name='Surfaces', gen_outer=False):
     outputnode = pe.Node(niu.IdentityInterface(
         fields=['out_surf']), name='outputnode')
 
-    exsurfs = extract_surface()
+    exsurfs = extract_surfaces()
     exsurfs.inputs.inputnode.model_name = model
 
     wf = pe.Workflow(name=name)
