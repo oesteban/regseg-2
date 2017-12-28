@@ -57,4 +57,3 @@ class _BaseRegistration(six.with_metaclass(ABCMeta, BaseEstimator, TransformerMi
         Returns the gradient with new parameters
 
         """
-
