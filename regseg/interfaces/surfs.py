@@ -101,7 +101,7 @@ def normalize_surfs(in_file, transform_file):
     pointset = img.get_arrays_from_intent('NIFTI_INTENT_POINTSET')[0]
     coords = pointset.data.T
     c_ras_keys = ('VolGeomC_R', 'VolGeomC_A', 'VolGeomC_S')
-    ras = np.array([[float(pointset.metadata[key])]
+    ras = np.array([[float(pointset.metadata.get(key, 0.0))]
                     for key in c_ras_keys])
     ones = np.ones((1, coords.shape[1]), dtype=coords.dtype)
     # Apply C_RAS translation to coordinates, then transform
