@@ -44,8 +44,8 @@ freesurfer/2013-June/030586.html>
     fill = pe.MapNode(FillMask(), name='FillMask', iterfield=['in_file'])
     pretess = pe.MapNode(fs.MRIPretess(label=1), name='PreTess',
                          iterfield=['in_filled'])
-    tess = pe.MapNode(fs.MRITessellate(label_value=1), name='tess',
-                      iterfield=['in_file'])
+    tess = pe.MapNode(fs.MRITessellate(label_value=1, use_real_RAS_coordinates=True),
+                      name='tess', iterfield=['in_file'])
     smooth = pe.MapNode(fs.SmoothTessellation(disable_estimates=True),
                         name='mris_smooth', iterfield=['in_file'])
     rename = pe.MapNode(niu.Rename(keep_ext=False),
