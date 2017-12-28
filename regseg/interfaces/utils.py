@@ -5,6 +5,7 @@
 Image tools interfaces
 ~~~~~~~~~~~~~~~~~~~~~~
 """
+import os
 import nibabel as nb
 import numpy as np
 
@@ -81,6 +82,30 @@ class FillMask(SimpleInterface):
         return runtime
 
 
+class AsegAddOuterInputSpec(BaseInterfaceInputSpec):
+    in_file = File(exists=True, mandatory=True, desc='input file')
+    in_mask = File(exists=True, mandatory=True, desc='input file')
+    label = traits.Int(5000, usedefault=True, desc='new label')
+
+
+class AsegAddOuterOutputSpec(TraitedSpec):
+    out_file = File(exists=True, desc='output aseg file with label added')
+
+
+class AsegAddOuter(SimpleInterface):
+    input_spec = AsegAddOuterInputSpec
+    output_spec = AsegAddOuterOutputSpec
+
+    def _run_interface(self, runtime):
+        self._results['out_file'] = _aseg_add_outer(
+            self.inputs.in_file,
+            self.inputs.in_mask,
+            newlabel=self.inputs.label,
+            newpath=runtime.cwd
+        )
+        return runtime
+
+
 def _fillmask(in_file, in_filled=None, newpath=None):
 
     if in_filled is None:
@@ -95,7 +120,7 @@ def _fillmask(in_file, in_filled=None, newpath=None):
     in_filled = np.atleast_1d(in_filled).tolist()
     for fname in in_filled:
         data = data + nb.load(fname).get_data()
-    data[data > 1.0] = 1.0
+    data[data > 1.0] = 1
 
     out_file = fname_presuffix(in_file, suffix='_filled',
                                newpath=newpath)
@@ -103,3 +128,21 @@ def _fillmask(in_file, in_filled=None, newpath=None):
     newfile.set_data_dtype(np.uint8)
     newfile.to_filename(out_file)
     return out_file
+
+
+def _aseg_add_outer(in_aseg, brainmask, newlabel=5000, newpath=None):
+    asegnii = nb.load(in_aseg)
+    aseg = asegnii.get_data()
+
+    bmsk = nb.load(brainmask).get_data().astype(np.uint8)
+    bmsk[bmsk > 0] = newlabel
+    bmsk[bmsk < newlabel] = 0
+
+    aseg[aseg == 0] = bmsk[aseg == 0]
+
+    if newpath is None:
+        newpath = os.getcwd()
+    out_file = fname_presuffix(in_aseg, suffix='+outer', newpath=newpath)
+    asegnii.__class__(aseg, asegnii.affine, asegnii.header).to_filename(out_file)
+    return out_file
+

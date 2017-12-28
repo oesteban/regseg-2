@@ -12,7 +12,7 @@ Defines the workflows for extracting surfaces from segmentations
 import nipype.pipeline.engine as pe             # pipeline engine
 from nipype.interfaces import utility as niu    # utility
 from nipype.interfaces import freesurfer as fs  # Freesurfer
-from ..interfaces import Binarize, NormalizeSurf, FillMask
+from ..interfaces import Binarize, NormalizeSurf, FillMask, AsegAddOuter
 
 
 def extract_surfaces(name='GenSurface'):
@@ -77,11 +77,11 @@ freesurfer/2013-June/030586.html>
     return wf
 
 
-def extract_surfaces_model(model='bold', name='Surfaces', gen_outer=False):
+def extract_surfaces_model(model='bold', name='Surfaces', gen_outer=True):
     """Extracts surfaces as prescribed by the model ``model``"""
 
     inputnode = pe.Node(niu.IdentityInterface(
-        fields=['aseg', 'norm', 'in_mask']), name='inputnode')
+        fields=['aseg', 'norm', 'brainmask', 't1_2_fsnative_invxfm']), name='inputnode')
     outputnode = pe.Node(niu.IdentityInterface(
         fields=['out_surf']), name='outputnode')
 
@@ -90,29 +90,23 @@ def extract_surfaces_model(model='bold', name='Surfaces', gen_outer=False):
 
     wf = pe.Workflow(name=name)
     wf.connect([
-        (inputnode, exsurfs, [('aseg', 'inputnode.aseg'),
-                              ('norm', 'inputnode.norm')]),
+        (inputnode, exsurfs, [('norm', 'inputnode.norm'),
+                              ('t1_2_fsnative_invxfm', 'inputnode.t1_2_fsnative_invxfm')]),
+        (exsurfs, outputnode, [('outputnode.out_surf', 'out_surf')]),
     ])
 
-    if not gen_outer:
+    if gen_outer:
+        addmsk = pe.Node(AsegAddOuter(), name='addmsk')
         wf.connect([
-            (exsurfs, outputnode, [('outputnode.out_surf', 'out_surf')]),
+            (inputnode, addmsk, [('aseg', 'in_file'),
+                                 ('brainmask', 'in_mask')]),
+            (addmsk, exsurfs, [('out_file', 'inputnode.aseg')]),
         ])
-        return wf
+    else:
+        wf.connect([
+            (inputnode, exsurfs, [('aseg', 'inputnode.aseg')]),
+        ])
 
-    # if gen_outer:
-    #     m = pe.Node(niu.Merge(2), name='MergeSurfs')
-    #     msk = extract_surface(name='MaskSurf')
-    #     msk.inputs.inputnode.labels = [1]
-    #     msk.inputs.inputnode.name = '%01d.outer' % (len(model_classes) - 1)
-
-    #     wf.connect([
-    #         (inputnode, msk, [('in_mask', 'inputnode.aseg'),
-    #                           ('in_mask', 'inputnode.norm')]),
-    #         (exsurfs, m, [('outputnode.out_surf', 'in1')]),
-    #         (msk, m, [('outputnode.out_surf', 'in2')]),
-    #         (m, outputnode, [('out', 'out_surf')]),
-    #     ])
     return wf
 
 
