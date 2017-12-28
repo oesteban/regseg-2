@@ -145,4 +145,3 @@ def _aseg_add_outer(in_aseg, brainmask, newlabel=5000, newpath=None):
     out_file = fname_presuffix(in_aseg, suffix='+outer', newpath=newpath)
     asegnii.__class__(aseg, asegnii.affine, asegnii.header).to_filename(out_file)
     return out_file
-
