@@ -7,7 +7,7 @@ def main():
     """ Install entry-point """
     import os
     from setuptools import setup, find_packages
-    from mriqc.__about__ import (
+    from regseg.__about__ import (
         __version__,
         __author__,
         __email__,
