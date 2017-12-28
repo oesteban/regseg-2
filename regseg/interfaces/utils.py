@@ -53,3 +53,53 @@ class Binarize(SimpleInterface):
         new.set_data_dtype(np.uint8)
         new.to_filename(self._results['out_file'])
         return runtime
+
+
+class FillMaskInputSpec(BaseInterfaceInputSpec):
+    in_file = File(exists=True, mandatory=True, desc='input file')
+    in_filled = File(exists=True, desc='input file')
+
+
+class FillMaskOutputSpec(TraitedSpec):
+    out_file = File(exists=True, desc='output binary mask')
+
+
+class FillMask(SimpleInterface):
+    input_spec = FillMaskInputSpec
+    output_spec = FillMaskOutputSpec
+
+    def _run_interface(self, runtime):
+        filled = None
+        if isdefined(self.inputs.in_filled):
+            filled = self.inputs.in_filled
+
+        self._results['out_file'] = _fillmask(
+            self.inputs.in_file,
+            in_filled=filled,
+            newpath=runtime.cwd
+        )
+        return runtime
+
+
+def _fillmask(in_file, in_filled=None, newpath=None):
+
+    if in_filled is None:
+        return in_file
+
+    if newpath is None:
+        newpath = os.getcwd()
+
+    nii = nb.load(in_file)
+    data = nii.get_data()
+
+    in_filled = np.atleast_1d(in_filled).tolist()
+    for fname in in_filled:
+        data = data + nb.load(fname).get_data()
+    data[data > 1.0] = 1.0
+
+    out_file = fname_presuffix(in_file, suffix='_filled',
+                               newpath=newpath)
+    newfile = nii.__class__(data, nii.affine, nii.header)
+    newfile.set_data_dtype(np.uint8)
+    newfile.to_filename(out_file)
+    return out_file
