@@ -119,7 +119,4 @@ def _read_model(model_name):
               'rb' if version_info[0] < 3 else 'r') as sfh:
         model = json.load(sfh)
 
-    name = ['%s.surf' % for m in model.keys()]
-    labels = list(model.values())
-
-    return name, labels
+    return list(model.keys()), list(model.values())
