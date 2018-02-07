@@ -28,28 +28,27 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
         :simple_form: yes
         from regseg.workflows.surf import extract_surfs_fs_wf
         wf = extract_surfs_fs_wf()
+
     **Inputs**
         subjects_dir
             FreeSurfer SUBJECTS_DIR
         subject_id
             FreeSurfer subject ID
         t1_preproc
-            The T1w preprocessed image
-        in_target
-            A target space (B0 for dMRI or reference for BOLD)
+            The T1w preprocessed image (the co-registration target for
+            bbr/bbregister)
         target_to_t1_lta
             A target-to-T1w affine transform, in LTA format.
 
     **Outputs**
-        surfaces
-            GIFTI surfaces
+        out_surf
+            GIFTI surfaces, in target space
     """
     workflow = pe.Workflow(name=name)
 
-    inputnode = pe.Node(niu.IdentityInterface(['subjects_dir', 'subject_id',
-                                               't1_preproc', 'in_target', 'xform_trg2t1']),
-                        name='inputnode')
-    outputnode = pe.Node(niu.IdentityInterface(['surfaces']), name='outputnode')
+    inputnode = pe.Node(niu.IdentityInterface([
+        'subjects_dir', 'subject_id', 't1_preproc', 'xform_trg2t1']), name='inputnode')
+    outputnode = pe.Node(niu.IdentityInterface(['out_surf']), name='outputnode')
 
     get_fs = pe.Node(nio.FreeSurferSource(), name='get_fs')
     exsurfs = extract_surfaces(normalize=False, use_ras_coord=False)
@@ -82,6 +81,7 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
         (lta_conv, lta_concat, [('out_lta', 'in_lta2')]),
         (lta_concat, lta_xfm, [('out_file', 'transform_file')]),
         (exsurfs, lta_xfm, [('outputnode.out_surf', 'in_file')]),
+        (lta_xfm, outputnode, [('out_file', 'out_surf')]),
     ])
 
     return workflow
