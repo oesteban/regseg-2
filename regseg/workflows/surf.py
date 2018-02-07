@@ -45,20 +45,38 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
     workflow = pe.Workflow(name=name)
 
     inputnode = pe.Node(niu.IdentityInterface(['subjects_dir', 'subject_id',
-                                               't1_preproc', 'in_target']),
+                                               't1_preproc', 'in_target', 'xform_trg2t1']),
                         name='inputnode')
     outputnode = pe.Node(niu.IdentityInterface(['surfaces']), name='outputnode')
 
-    get_surfaces = pe.Node(nio.FreeSurferSource(), name='get_surfaces')
-
+    get_fs = pe.Node(nio.FreeSurferSource(), name='get_fs')
     exsurfs = extract_surfaces(normalize=False)
     exsurfs.inputs.inputnode.model_name = 'bold'
 
+    tkreg = pe.Node(fs.Tkregister2(reg_file='native2fs.dat', noedit=True,
+                    reg_header=True), name='tkregister2')
+
+    def _format_subid(sub_id):
+        return '--subject %s' % sub_id
+    lta_conv = pe.Node(fs.LTAConvert(out_lta=True), 'lta_convert')
+    lta_concat = pe.Node(fs.ConcatenateLTA(out_type='RAS2RAS'), name='lta_concat')
+
     workflow.connect([
-        (inputnode, get_surfaces, [('subjects_dir', 'subjects_dir'),
-                                   ('subject_id', 'subject_id')]),
-        (get_surfaces, exsurfs, [('aseg', 'inputnode.aseg'),
-                                 ('norm', 'inputnode.norm')])
+        (inputnode, get_fs, [('subjects_dir', 'subjects_dir'),
+                             ('subject_id', 'subject_id')]),
+        (inputnode, tkreg, [('t1_preproc', 'moving_image'),
+                            ('subject_id', 'subject_id')]),
+        (inputnode, lta_conv, [('t1_preproc', 'source_file'),
+                               (('subject_id', _format_subid), 'args')]),
+        (inputnode, lta_concat, [('subjects_dir', 'subjects_dir'),
+                                 ('subject_id', 'subject_id'),
+                                 ('xform_trg2t1', 'in_lta1')]),
+        (get_fs, exsurfs, [('aseg', 'inputnode.aseg'),
+                           ('norm', 'inputnode.norm')]),
+        (get_fs, tkreg, [('orig', 'target_image')]),
+        (tkreg, lta_conv, [('reg_file', 'in_reg')]),
+        (get_fs, lta_conv, [('orig', 'target_file')]),
+        (lta_conv, lta_concat, [('out_lta', 'in_lta2')]),
     ])
 
     return workflow
