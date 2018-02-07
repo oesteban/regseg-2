@@ -11,11 +11,59 @@ Defines the workflows for extracting surfaces from segmentations
 """
 import nipype.pipeline.engine as pe             # pipeline engine
 from nipype.interfaces import utility as niu    # utility
+from nipype.interfaces import io as nio         # i/o
 from nipype.interfaces import freesurfer as fs  # Freesurfer
 from ..interfaces import Binarize, NormalizeSurf, FillMask, AsegAddOuter
 
 
-def extract_surfaces(name='GenSurface'):
+def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
+    """
+    This workflow extracts GIFTI sorfaces from a FreeSurfer subjects directory
+    and projects them onto a target space.
+
+    .. workflow::
+        :graph2use: orig
+        :simple_form: yes
+        from regseg.workflows.surf import extract_surfs_fs_wf
+        wf = extract_surfs_fs_wf()
+    **Inputs**
+        subjects_dir
+            FreeSurfer SUBJECTS_DIR
+        subject_id
+            FreeSurfer subject ID
+        t1_preproc
+            The T1w preprocessed image
+        in_target
+            A target space (B0 for dMRI or reference for BOLD)
+        target_to_t1_lta
+            A target-to-T1w affine transform, in LTA format.
+
+    **Outputs**
+        surfaces
+            GIFTI surfaces
+    """
+    workflow = pe.Workflow(name=name)
+
+    inputnode = pe.Node(niu.IdentityInterface(['subjects_dir', 'subject_id',
+                                               't1_preproc', 'in_target']),
+                        name='inputnode')
+    outputnode = pe.Node(niu.IdentityInterface(['surfaces']), name='outputnode')
+
+    get_surfaces = pe.Node(nio.FreeSurferSource(), name='get_surfaces')
+
+    exsurfs = extract_surfaces(normalize=False)
+    exsurfs.inputs.inputnode.model_name = 'bold'
+
+    workflow.connect([
+        (inputnode, get_surfaces, [('subjects_dir', 'subjects_dir'),
+                                   ('subject_id', 'subject_id')]),
+        (get_surfaces, exsurfs, [('aseg', 'inputnode.aseg'),
+                                 ('norm', 'inputnode.norm')])
+    ])
+
+    return workflow
+
+def extract_surfaces(name='GenSurface', normalize=True):
     """
     A nipype workflow for surface extraction from ``labels`` in a segmentation.
 
@@ -53,14 +101,12 @@ freesurfer/2013-June/030586.html>
 
     togii = pe.MapNode(fs.MRIsConvert(out_datatype='gii'),
                        iterfield='in_file', name='toGIFTI')
-    fixgii = pe.MapNode(NormalizeSurf(), iterfield='in_file', name='fixGIFTI')
 
     wf = pe.Workflow(name=name)
     wf.connect([
         (inputnode, get_mod, [('model_name', 'model_name')]),
         (inputnode, binarize, [('aseg', 'in_file')]),
         (get_mod, binarize, [('labels', 'match')]),
-        (inputnode, fixgii, [('t1_2_fsnative_invxfm', 'transform_file')]),
         (inputnode, pretess, [('norm', 'in_norm')]),
         (inputnode, fill, [('in_filled', 'in_filled')]),
         (binarize, fill, [('out_file', 'in_file')]),
@@ -70,10 +116,20 @@ freesurfer/2013-June/030586.html>
         (smooth, rename, [('surface', 'in_file')]),
         (get_mod, rename, [('name', 'format_string')]),
         (rename, togii, [('out_file', 'in_file')]),
-        (togii, fixgii, [('converted', 'in_file')]),
-        (fixgii, outputnode, [('out_file', 'out_surf')]),
         (fill, outputnode, [('out_file', 'out_binary')]),
     ])
+    if normalize:
+        fixgii = pe.MapNode(NormalizeSurf(), iterfield='in_file', name='fixGIFTI')
+        wf.connect([
+            (inputnode, fixgii, [('t1_2_fsnative_invxfm', 'transform_file')]),
+            (togii, fixgii, [('converted', 'in_file')]),
+            (fixgii, outputnode, [('out_file', 'out_surf')]),
+        ])
+    else:
+        wf.connect([
+            (togii, outputnode, [('converted', 'out_surf')]),
+        ])
+
     return wf
 
 
