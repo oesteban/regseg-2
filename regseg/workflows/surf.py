@@ -13,7 +13,9 @@ import nipype.pipeline.engine as pe             # pipeline engine
 from nipype.interfaces import utility as niu    # utility
 from nipype.interfaces import io as nio         # i/o
 from nipype.interfaces import freesurfer as fs  # Freesurfer
-from ..interfaces import Binarize, NormalizeSurf, FillMask, AsegAddOuter
+from ..interfaces import (
+    Binarize, NormalizeSurf, FillMask, AsegAddOuter, ApplyLTATransform
+)
 
 
 def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
@@ -50,16 +52,17 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
     outputnode = pe.Node(niu.IdentityInterface(['surfaces']), name='outputnode')
 
     get_fs = pe.Node(nio.FreeSurferSource(), name='get_fs')
-    exsurfs = extract_surfaces(normalize=False)
-    exsurfs.inputs.inputnode.model_name = 'bold'
+    exsurfs = extract_surfaces(normalize=False, use_ras_coord=False)
+    exsurfs.inputs.inputnode.model_name = 'boldsimple'
 
     tkreg = pe.Node(fs.Tkregister2(reg_file='native2fs.dat', noedit=True,
                     reg_header=True), name='tkregister2')
 
     def _format_subid(sub_id):
         return '--subject %s' % sub_id
-    lta_conv = pe.Node(fs.LTAConvert(out_lta=True), 'lta_convert')
-    lta_concat = pe.Node(fs.ConcatenateLTA(out_type='RAS2RAS'), name='lta_concat')
+    lta_conv = pe.Node(fs.utils.LTAConvert(out_lta=True), 'lta_convert')
+    lta_concat = pe.Node(fs.preprocess.ConcatenateLTA(out_type='RAS2RAS'), name='lta_concat')
+    lta_xfm = pe.MapNode(ApplyLTATransform(), iterfield=['in_file'], name='lta_xfm')
 
     workflow.connect([
         (inputnode, get_fs, [('subjects_dir', 'subjects_dir'),
@@ -69,7 +72,7 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
         (inputnode, lta_conv, [('t1_preproc', 'source_file'),
                                (('subject_id', _format_subid), 'args')]),
         (inputnode, lta_concat, [('subjects_dir', 'subjects_dir'),
-                                 ('subject_id', 'subject_id'),
+                                 ('subject_id', 'subject'),
                                  ('xform_trg2t1', 'in_lta1')]),
         (get_fs, exsurfs, [('aseg', 'inputnode.aseg'),
                            ('norm', 'inputnode.norm')]),
@@ -77,11 +80,14 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
         (tkreg, lta_conv, [('reg_file', 'in_reg')]),
         (get_fs, lta_conv, [('orig', 'target_file')]),
         (lta_conv, lta_concat, [('out_lta', 'in_lta2')]),
+        (lta_concat, lta_xfm, [('out_file', 'transform_file')]),
+        (exsurfs, lta_xfm, [('outputnode.out_surf', 'in_file')]),
     ])
 
     return workflow
 
-def extract_surfaces(name='GenSurface', normalize=True):
+
+def extract_surfaces(name='GenSurface', normalize=True, use_ras_coord=True):
     """
     A nipype workflow for surface extraction from ``labels`` in a segmentation.
 
@@ -110,7 +116,7 @@ freesurfer/2013-June/030586.html>
     fill = pe.MapNode(FillMask(), name='FillMask', iterfield=['in_file'])
     pretess = pe.MapNode(fs.MRIPretess(label=1), name='PreTess',
                          iterfield=['in_filled'])
-    tess = pe.MapNode(fs.MRITessellate(label_value=1, use_real_RAS_coordinates=True),
+    tess = pe.MapNode(fs.MRITessellate(label_value=1, use_real_RAS_coordinates=use_ras_coord),
                       name='tess', iterfield=['in_file'])
     smooth = pe.MapNode(fs.SmoothTessellation(disable_estimates=True),
                         name='mris_smooth', iterfield=['in_file'])

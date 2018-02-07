@@ -62,6 +62,30 @@ class NormalizeSurf(SimpleInterface):
         return runtime
 
 
+class ApplyLTATransformInputSpec(BaseInterfaceInputSpec):
+    in_file = File(mandatory=True, exists=True, desc='Freesurfer-generated GIFTI file')
+    transform_file = File(mandatory=True, exists=True, desc='LTA affine transform file')
+
+
+class ApplyLTATransformOutputSpec(TraitedSpec):
+    out_file = File(desc='output file with re-centered GIFTI coordinates')
+
+
+class ApplyLTATransform(SimpleInterface):
+    """
+    Apply an affine transform (given in LTA format) to a GIFTI surface.
+    """
+    input_spec = ApplyLTATransformInputSpec
+    output_spec = ApplyLTATransformOutputSpec
+
+    def _run_interface(self, runtime):
+        self._results['out_file'] = surf2surf(
+            self.inputs.in_file,
+            self.inputs.transform_file,
+            newpath=runtime.cwd)
+        return runtime
+
+
 def load_transform(fname):
     """Load affine transform from file
     Parameters
