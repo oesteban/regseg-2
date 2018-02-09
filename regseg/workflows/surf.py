@@ -123,3 +123,4 @@ def _read_model(model_name):
     labels = list(model.values())
 
     return name, labels
+
