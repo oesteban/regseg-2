@@ -11,11 +11,83 @@ Defines the workflows for extracting surfaces from segmentations
 """
 import nipype.pipeline.engine as pe             # pipeline engine
 from nipype.interfaces import utility as niu    # utility
+from nipype.interfaces import io as nio         # i/o
 from nipype.interfaces import freesurfer as fs  # Freesurfer
-from ..interfaces import Binarize, NormalizeSurf, FillMask, AsegAddOuter
+from ..interfaces import (
+    Binarize, NormalizeSurf, FillMask, AsegAddOuter, ApplyLTATransform
+)
 
 
-def extract_surfaces(name='GenSurface'):
+def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
+    """
+    This workflow extracts GIFTI sorfaces from a FreeSurfer subjects directory
+    and projects them onto a target space.
+
+    .. workflow::
+        :graph2use: orig
+        :simple_form: yes
+        from regseg.workflows.surf import extract_surfs_fs_wf
+        wf = extract_surfs_fs_wf()
+
+    **Inputs**
+        subjects_dir
+            FreeSurfer SUBJECTS_DIR
+        subject_id
+            FreeSurfer subject ID
+        t1_preproc
+            The T1w preprocessed image (the co-registration target for
+            bbr/bbregister)
+        target_to_t1_lta
+            A target-to-T1w affine transform, in LTA format.
+
+    **Outputs**
+        out_surf
+            GIFTI surfaces, in target space
+    """
+    workflow = pe.Workflow(name=name)
+
+    inputnode = pe.Node(niu.IdentityInterface([
+        'subjects_dir', 'subject_id', 't1_preproc', 'xform_trg2t1']), name='inputnode')
+    outputnode = pe.Node(niu.IdentityInterface(['out_surf']), name='outputnode')
+
+    get_fs = pe.Node(nio.FreeSurferSource(), name='get_fs')
+    exsurfs = extract_surfaces(normalize=False, use_ras_coord=False)
+    exsurfs.inputs.inputnode.model_name = 'boldsimple'
+
+    tkreg = pe.Node(fs.Tkregister2(reg_file='native2fs.dat', noedit=True,
+                    reg_header=True), name='tkregister2')
+
+    def _format_subid(sub_id):
+        return '--subject %s' % sub_id
+    lta_conv = pe.Node(fs.utils.LTAConvert(out_lta=True), 'lta_convert')
+    lta_concat = pe.Node(fs.preprocess.ConcatenateLTA(out_type='RAS2RAS'), name='lta_concat')
+    lta_xfm = pe.MapNode(ApplyLTATransform(), iterfield=['in_file'], name='lta_xfm')
+
+    workflow.connect([
+        (inputnode, get_fs, [('subjects_dir', 'subjects_dir'),
+                             ('subject_id', 'subject_id')]),
+        (inputnode, tkreg, [('t1_preproc', 'moving_image'),
+                            ('subject_id', 'subject_id')]),
+        (inputnode, lta_conv, [('t1_preproc', 'source_file'),
+                               (('subject_id', _format_subid), 'args')]),
+        (inputnode, lta_concat, [('subjects_dir', 'subjects_dir'),
+                                 ('subject_id', 'subject'),
+                                 ('xform_trg2t1', 'in_lta1')]),
+        (get_fs, exsurfs, [('aseg', 'inputnode.aseg'),
+                           ('norm', 'inputnode.norm')]),
+        (get_fs, tkreg, [('orig', 'target_image')]),
+        (tkreg, lta_conv, [('reg_file', 'in_reg')]),
+        (get_fs, lta_conv, [('orig', 'target_file')]),
+        (lta_conv, lta_concat, [('out_lta', 'in_lta2')]),
+        (lta_concat, lta_xfm, [('out_file', 'transform_file')]),
+        (exsurfs, lta_xfm, [('outputnode.out_surf', 'in_file')]),
+        (lta_xfm, outputnode, [('out_file', 'out_surf')]),
+    ])
+
+    return workflow
+
+
+def extract_surfaces(name='GenSurface', normalize=True, use_ras_coord=True):
     """
     A nipype workflow for surface extraction from ``labels`` in a segmentation.
 
@@ -44,7 +116,7 @@ freesurfer/2013-June/030586.html>
     fill = pe.MapNode(FillMask(), name='FillMask', iterfield=['in_file'])
     pretess = pe.MapNode(fs.MRIPretess(label=1), name='PreTess',
                          iterfield=['in_filled'])
-    tess = pe.MapNode(fs.MRITessellate(label_value=1, use_real_RAS_coordinates=True),
+    tess = pe.MapNode(fs.MRITessellate(label_value=1, use_real_RAS_coordinates=use_ras_coord),
                       name='tess', iterfield=['in_file'])
     smooth = pe.MapNode(fs.SmoothTessellation(disable_estimates=True),
                         name='mris_smooth', iterfield=['in_file'])
@@ -53,14 +125,12 @@ freesurfer/2013-June/030586.html>
 
     togii = pe.MapNode(fs.MRIsConvert(out_datatype='gii'),
                        iterfield='in_file', name='toGIFTI')
-    fixgii = pe.MapNode(NormalizeSurf(), iterfield='in_file', name='fixGIFTI')
 
     wf = pe.Workflow(name=name)
     wf.connect([
         (inputnode, get_mod, [('model_name', 'model_name')]),
         (inputnode, binarize, [('aseg', 'in_file')]),
         (get_mod, binarize, [('labels', 'match')]),
-        (inputnode, fixgii, [('t1_2_fsnative_invxfm', 'transform_file')]),
         (inputnode, pretess, [('norm', 'in_norm')]),
         (inputnode, fill, [('in_filled', 'in_filled')]),
         (binarize, fill, [('out_file', 'in_file')]),
@@ -70,10 +140,20 @@ freesurfer/2013-June/030586.html>
         (smooth, rename, [('surface', 'in_file')]),
         (get_mod, rename, [('name', 'format_string')]),
         (rename, togii, [('out_file', 'in_file')]),
-        (togii, fixgii, [('converted', 'in_file')]),
-        (fixgii, outputnode, [('out_file', 'out_surf')]),
         (fill, outputnode, [('out_file', 'out_binary')]),
     ])
+    if normalize:
+        fixgii = pe.MapNode(NormalizeSurf(), iterfield='in_file', name='fixGIFTI')
+        wf.connect([
+            (inputnode, fixgii, [('t1_2_fsnative_invxfm', 'transform_file')]),
+            (togii, fixgii, [('converted', 'in_file')]),
+            (fixgii, outputnode, [('out_file', 'out_surf')]),
+        ])
+    else:
+        wf.connect([
+            (togii, outputnode, [('converted', 'out_surf')]),
+        ])
+
     return wf
 
 

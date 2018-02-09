@@ -5,4 +5,3 @@
 The :mod:`regseg.core` module includes base interfaces for image registration
 algorithms.
 """
-

@@ -9,6 +9,7 @@ import os
 import numpy as np
 import nibabel as nb
 
+from nipype.utils.filemanip import fname_presuffix
 from nipype.interfaces.base import (
     BaseInterfaceInputSpec, TraitedSpec, File, isdefined,
     SimpleInterface
@@ -57,6 +58,30 @@ class NormalizeSurf(SimpleInterface):
         if not isdefined(transform_file):
             transform_file = None
         self._results['out_file'] = normalize_surfs(self.inputs.in_file, transform_file)
+        return runtime
+
+
+class ApplyLTATransformInputSpec(BaseInterfaceInputSpec):
+    in_file = File(mandatory=True, exists=True, desc='Freesurfer-generated GIFTI file')
+    transform_file = File(mandatory=True, exists=True, desc='LTA affine transform file')
+
+
+class ApplyLTATransformOutputSpec(TraitedSpec):
+    out_file = File(desc='output file with re-centered GIFTI coordinates')
+
+
+class ApplyLTATransform(SimpleInterface):
+    """
+    Apply an affine transform (given in LTA format) to a GIFTI surface.
+    """
+    input_spec = ApplyLTATransformInputSpec
+    output_spec = ApplyLTATransformOutputSpec
+
+    def _run_interface(self, runtime):
+        self._results['out_file'] = surf2surf(
+            self.inputs.in_file,
+            self.inputs.transform_file,
+            newpath=runtime.cwd)
         return runtime
 
 
@@ -128,3 +153,39 @@ def normalize_surfs(in_file, transform_file):
             pointset.meta.data.insert(2, geom_type)
     img.to_filename(fname)
     return os.path.abspath(fname)
+
+
+def surf2surf(in_surf, xform_lta, invert=True, newpath=None):
+    """
+    Transforms a gifti surface onto a target space
+    """
+    # Read gifti surface
+    surfgii = nb.load(in_surf)
+
+    # Read in lta file
+    with open(xform_lta) as xfmfile:
+        xfm = np.array([np.fromstring(l, sep=" ").tolist()
+                       for l in xfmfile.readlines()[5:9]])
+
+    if invert:
+        xfm = np.linalg.inv(xfm)
+
+    coords = surfgii.darrays[0].data
+    newcoords = xfm.dot(np.hstack((
+        coords, np.ones((coords.shape[0], 1)))).T).T[..., :3]
+    surfgii.darrays[0].data = newcoords.astype('float32')
+    surfgii.darrays[0].coordsys.dataspace = 2
+    surfgii.darrays[0].coordsys.xformspace = 2
+    surfgii.darrays[0].coordsys.xform = np.eye(4)
+
+    # Updating metadata
+    # metadict = surf.darrays[0].meta.metadata
+    # del metadict['SurfaceCenterY']
+    # del metadict['SurfaceCenterX']
+    # del metadict['SurfaceCenterZ']
+    # surf.darrays[0].meta = nb.gifti.GiftiMetaData.from_dict(metadict)
+
+    out_file = fname_presuffix(in_surf, suffix='_target.surf',
+                               newpath=newpath)
+    surfgii.to_filename(out_file)
+    return out_file
