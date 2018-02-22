@@ -12,7 +12,7 @@ import nibabel as nb
 from nipype.utils.filemanip import fname_presuffix
 from nipype.interfaces.base import (
     BaseInterfaceInputSpec, TraitedSpec, File, isdefined,
-    SimpleInterface
+    SimpleInterface, traits
 )
 
 
@@ -64,6 +64,7 @@ class NormalizeSurf(SimpleInterface):
 class ApplyLTATransformInputSpec(BaseInterfaceInputSpec):
     in_file = File(mandatory=True, exists=True, desc='Freesurfer-generated GIFTI file')
     transform_file = File(mandatory=True, exists=True, desc='LTA affine transform file')
+    absolute_coords = traits.Bool(True, usedefault=True, desc='coordinates are absolute')
 
 
 class ApplyLTATransformOutputSpec(TraitedSpec):
@@ -81,7 +82,8 @@ class ApplyLTATransform(SimpleInterface):
         self._results['out_file'] = surf2surf(
             self.inputs.in_file,
             self.inputs.transform_file,
-            newpath=runtime.cwd)
+            newpath=runtime.cwd,
+            center=self.inputs.absolute_coords)
         return runtime
 
 
@@ -155,7 +157,9 @@ def normalize_surfs(in_file, transform_file):
     return os.path.abspath(fname)
 
 
-def surf2surf(in_surf, xform_lta, invert=True, newpath=None):
+def surf2surf(in_surf, xform_lta, invert=True, newpath=None,
+              center=False,
+              offset_from=['VolGeomC_R', 'VolGeomC_A', 'VolGeomC_S']):
     """
     Transforms a gifti surface onto a target space
     """
@@ -173,19 +177,44 @@ def surf2surf(in_surf, xform_lta, invert=True, newpath=None):
     coords = surfgii.darrays[0].data
     newcoords = xfm.dot(np.hstack((
         coords, np.ones((coords.shape[0], 1)))).T).T[..., :3]
-    surfgii.darrays[0].data = newcoords.astype('float32')
-    surfgii.darrays[0].coordsys.dataspace = 2
-    surfgii.darrays[0].coordsys.xformspace = 2
-    surfgii.darrays[0].coordsys.xform = np.eye(4)
+
+    meta = surfgii.darrays[0].meta.metadata
+
+    coordsys = surfgii.darrays[0].coordsys
+    coordsys.dataspace = 2
+    coordsys.xformspace = 2
+    coordsys.xform = np.eye(4)
+
+    # Absolute coordinates
+    if center:
+        offset = [float(surfgii.darrays[0].meta.metadata[v]) for v in offset_from]
+        newcoords += offset
+        for k in offset_from:
+            meta[k] = '%f' % 0.0
 
     # Updating metadata
-    # metadict = surf.darrays[0].meta.metadata
-    # del metadict['SurfaceCenterY']
-    # del metadict['SurfaceCenterX']
-    # del metadict['SurfaceCenterZ']
-    # surf.darrays[0].meta = nb.gifti.GiftiMetaData.from_dict(metadict)
+    # del meta['SurfaceCenterX']
+    # del meta['SurfaceCenterY']
+    # del meta['SurfaceCenterZ']
 
-    out_file = fname_presuffix(in_surf, suffix='_target.surf',
+    surfgii.darrays[0] = nb.gifti.GiftiDataArray(
+        data=newcoords.astype('float32'),
+        datatype='NIFTI_TYPE_FLOAT32',
+        intent='NIFTI_INTENT_POINTSET',
+        meta=meta,
+        coordsys=coordsys
+    )
+    surfgii.darrays[1] = nb.gifti.GiftiDataArray(
+        data=surfgii.darrays[1].data.astype('float32'),
+        datatype='NIFTI_TYPE_FLOAT32',
+        intent='NIFTI_INTENT_TRIANGLE',
+        meta=meta,
+        coordsys=nb.gifti.GiftiCoordSystem(dataspace='NIFTI_XFORM_UNKNOWN'),
+    )
+
+    out_file = fname_presuffix(in_surf,
+                               suffix='_target.surf.gii',
+                               use_ext=False,
                                newpath=newpath)
     surfgii.to_filename(out_file)
     return out_file
