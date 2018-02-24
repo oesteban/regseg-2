@@ -92,6 +92,7 @@ def mask2surf(name='MaskToSurface', use_ras_coord=True):
     inputnode = pe.Node(niu.IdentityInterface(
         fields=['in_file', 'norm', 'in_filled', 'out_name']), name='inputnode')
     outputnode = pe.Node(niu.IdentityInterface(fields=['out_surf']), name='outputnode')
+    binarize = pe.Node(fs.Binarize(min=0.1), name='binarize')
     fill = pe.Node(FillMask(), name='FillMask')
     pretess = pe.Node(fs.MRIPretess(label=1), name='PreTess')
     tess = pe.Node(fs.MRITessellate(label_value=1, use_real_RAS_coordinates=use_ras_coord),
@@ -103,10 +104,11 @@ def mask2surf(name='MaskToSurface', use_ras_coord=True):
 
     wf = pe.Workflow(name=name)
     wf.connect([
+        (inputnode, binarize, [('in_file', 'in_file')]),
         (inputnode, pretess, [('norm', 'in_norm')]),
-        (inputnode, fill, [('in_file', 'in_file'),
-                           ('in_filled', 'in_filled')]),
+        (inputnode, fill, [('in_filled', 'in_filled')]),
         (inputnode, rename, [('out_name', 'format_string')]),
+        (binarize, fill, [('binary_file', 'in_file')]),
         (fill, pretess, [('out_file', 'in_filled')]),
         (pretess, tess, [('out_file', 'in_file')]),
         (tess, smooth, [('surface', 'in_file')]),
@@ -253,4 +255,3 @@ def _read_model(model_name):
     labels = list(model.values())
 
     return name, labels
-
