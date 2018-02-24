@@ -112,6 +112,7 @@ def mask2surf(name='MaskToSurface', use_ras_coord=True):
         (tess, smooth, [('surface', 'in_file')]),
         (smooth, rename, [('surface', 'in_file')]),
         (rename, togii, [('out_file', 'in_file')]),
+        (togii, outputnode, [('converted', 'out_surf')]),
     ])
     return wf
 
@@ -186,6 +187,7 @@ freesurfer/2013-June/030586.html>
                                   ('in_filled', 'inputnode.in_filled')]),
             (togii, merge, [('converted', 'in1')]),
             (bmsk_wf, merge, [('outputnode.out_surf', 'in2')]),
+            (merge, surfnode, [('out', 'out_surf')]),
         ])
     else:
         wf.connect(togii, 'converted', surfnode, 'out_surf')
