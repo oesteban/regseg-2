@@ -88,7 +88,7 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
     return workflow
 
 
-def mask2surf(name='MaskToSurface', normalize=True, use_ras_coord=True):
+def mask2surf(name='MaskToSurface', use_ras_coord=True):
     inputnode = pe.Node(niu.IdentityInterface(
         fields=['in_file', 'norm', 'in_filled', 'out_name']), name='inputnode')
     outputnode = pe.Node(niu.IdentityInterface(fields=['out_surf']), name='outputnode')
@@ -113,17 +113,6 @@ def mask2surf(name='MaskToSurface', normalize=True, use_ras_coord=True):
         (smooth, rename, [('surface', 'in_file')]),
         (rename, togii, [('out_file', 'in_file')]),
     ])
-    if normalize:
-        fixgii = pe.MapNode(NormalizeSurf(), iterfield='in_file', name='fixGIFTI')
-        wf.connect([
-            (inputnode, fixgii, [('t1_2_fsnative_invxfm', 'transform_file')]),
-            (togii, fixgii, [('converted', 'in_file')]),
-            (fixgii, outputnode, [('out_file', 'out_surf')]),
-        ])
-    else:
-        wf.connect([
-            (togii, outputnode, [('converted', 'out_surf')]),
-        ])
     return wf
 
 
@@ -148,6 +137,8 @@ freesurfer/2013-June/030586.html>
         name='inputnode')
     outputnode = pe.Node(niu.IdentityInterface(
         fields=['out_surf', 'out_binary']), name='outputnode')
+
+    surfnode = pe.Node(niu.IdentityInterface(fields=['out_surf']), name='surfnode')
 
     get_mod = pe.Node(niu.Function(function=_read_model, output_names=['name', 'labels']),
                       name='GetModel')
@@ -184,25 +175,31 @@ freesurfer/2013-June/030586.html>
         (rename, togii, [('out_file', 'in_file')]),
         (fill, outputnode, [('out_file', 'out_binary')]),
     ])
+
     if brainmask:
-        bmsk_wf = mask2surf(normalize=normalize, use_ras_coord=use_ras_coord)
-        bmsk_wf.inputs.inputnode.out_name = 'brain.surf.gii'
+        bmsk_wf = mask2surf(use_ras_coord=use_ras_coord)
+        bmsk_wf.inputs.inputnode.out_name = 'brain.surf'
+        merge = pe.Node(niu.Merge(2), name='mergebmask')
         wf.connect([
-            (inputnode, bmsk_wf, [('brainmask', 'in_file'),
-                                  ('norm', 'norm'),
-                                  ('in_filled', 'in_filled')]),
+            (inputnode, bmsk_wf, [('brainmask', 'inputnode.in_file'),
+                                  ('norm', 'inputnode.norm'),
+                                  ('in_filled', 'inputnode.in_filled')]),
+            (togii, merge, [('converted', 'in1')]),
+            (bmsk_wf, merge, [('outputnode.out_surf', 'in2')]),
         ])
+    else:
+        wf.connect(togii, 'converted', surfnode, 'out_surf')
 
     if normalize:
         fixgii = pe.MapNode(NormalizeSurf(), iterfield='in_file', name='fixGIFTI')
         wf.connect([
             (inputnode, fixgii, [('t1_2_fsnative_invxfm', 'transform_file')]),
-            (togii, fixgii, [('converted', 'in_file')]),
+            (surfnode, fixgii, [('out_surf', 'in_file')]),
             (fixgii, outputnode, [('out_file', 'out_surf')]),
         ])
     else:
         wf.connect([
-            (togii, outputnode, [('converted', 'out_surf')]),
+            (surfnode, outputnode, [('out_surf', 'out_surf')]),
         ])
 
     return wf
