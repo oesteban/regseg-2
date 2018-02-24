@@ -51,7 +51,7 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
     outputnode = pe.Node(niu.IdentityInterface(['out_surf']), name='outputnode')
 
     get_fs = pe.Node(nio.FreeSurferSource(), name='get_fs')
-    exsurfs = extract_surfaces(normalize=False, use_ras_coord=False)
+    exsurfs = extract_surfaces(normalize=False, use_ras_coord=False, brainmask=True)
     exsurfs.inputs.inputnode.model_name = 'boldsimple'
 
     tkreg = pe.Node(fs.Tkregister2(reg_file='native2fs.dat', noedit=True,
@@ -74,7 +74,8 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
                                  ('subject_id', 'subject'),
                                  ('xform_trg2t1', 'in_lta1')]),
         (get_fs, exsurfs, [('aseg', 'inputnode.aseg'),
-                           ('norm', 'inputnode.norm')]),
+                           ('norm', 'inputnode.norm'),
+                           ('brainmask', 'inputnode.brainmask')]),
         (get_fs, tkreg, [('orig', 'target_image')]),
         (tkreg, lta_conv, [('reg_file', 'in_reg')]),
         (get_fs, lta_conv, [('orig', 'target_file')]),
@@ -87,7 +88,47 @@ def extract_surfs_fs_wf(name='extract_surfs_fs_wf'):
     return workflow
 
 
-def extract_surfaces(name='GenSurface', normalize=True, use_ras_coord=True):
+def mask2surf(name='MaskToSurface', normalize=True, use_ras_coord=True):
+    inputnode = pe.Node(niu.IdentityInterface(
+        fields=['in_file', 'norm', 'in_filled', 'out_name']), name='inputnode')
+    outputnode = pe.Node(niu.IdentityInterface(fields=['out_surf']), name='outputnode')
+    fill = pe.Node(FillMask(), name='FillMask')
+    pretess = pe.Node(fs.MRIPretess(label=1), name='PreTess')
+    tess = pe.Node(fs.MRITessellate(label_value=1, use_real_RAS_coordinates=use_ras_coord),
+                   name='tess')
+    smooth = pe.Node(fs.SmoothTessellation(disable_estimates=True),
+                     name='mris_smooth')
+    rename = pe.Node(niu.Rename(keep_ext=False), name='rename')
+    togii = pe.Node(fs.MRIsConvert(out_datatype='gii'), name='toGIFTI')
+
+    wf = pe.Workflow(name=name)
+    wf.connect([
+        (inputnode, pretess, [('norm', 'in_norm')]),
+        (inputnode, fill, [('in_file', 'in_file'),
+                           ('in_filled', 'in_filled')]),
+        (inputnode, rename, [('out_name', 'format_string')]),
+        (fill, pretess, [('out_file', 'in_filled')]),
+        (pretess, tess, [('out_file', 'in_file')]),
+        (tess, smooth, [('surface', 'in_file')]),
+        (smooth, rename, [('surface', 'in_file')]),
+        (rename, togii, [('out_file', 'in_file')]),
+    ])
+    if normalize:
+        fixgii = pe.MapNode(NormalizeSurf(), iterfield='in_file', name='fixGIFTI')
+        wf.connect([
+            (inputnode, fixgii, [('t1_2_fsnative_invxfm', 'transform_file')]),
+            (togii, fixgii, [('converted', 'in_file')]),
+            (fixgii, outputnode, [('out_file', 'out_surf')]),
+        ])
+    else:
+        wf.connect([
+            (togii, outputnode, [('converted', 'out_surf')]),
+        ])
+    return wf
+
+
+def extract_surfaces(name='GenSurface', normalize=True, use_ras_coord=True,
+                     brainmask=False):
     """
     A nipype workflow for surface extraction from ``labels`` in a segmentation.
 
@@ -102,7 +143,7 @@ freesurfer-subcortical-structures-into-blender/>
 freesurfer/2013-June/030586.html>
     """
     inputnode = pe.Node(niu.IdentityInterface(
-        fields=['aseg', 'norm', 't1_2_fsnative_invxfm', 'in_filled', 'model_name'],
+        fields=['aseg', 'norm', 'in_filled', 'brainmask', 't1_2_fsnative_invxfm', 'model_name'],
         mandatory_inputs=False),
         name='inputnode')
     outputnode = pe.Node(niu.IdentityInterface(
@@ -113,6 +154,7 @@ freesurfer/2013-June/030586.html>
 
     binarize = pe.MapNode(Binarize(), name='BinarizeLabels',
                           iterfield=['match'])
+
     fill = pe.MapNode(FillMask(), name='FillMask', iterfield=['in_file'])
     pretess = pe.MapNode(fs.MRIPretess(label=1), name='PreTess',
                          iterfield=['in_filled'])
@@ -142,6 +184,15 @@ freesurfer/2013-June/030586.html>
         (rename, togii, [('out_file', 'in_file')]),
         (fill, outputnode, [('out_file', 'out_binary')]),
     ])
+    if brainmask:
+        bmsk_wf = mask2surf(normalize=normalize, use_ras_coord=use_ras_coord)
+        bmsk_wf.inputs.inputnode.out_name = 'brain.surf.gii'
+        wf.connect([
+            (inputnode, bmsk_wf, [('brainmask', 'in_file'),
+                                  ('norm', 'norm'),
+                                  ('in_filled', 'in_filled')]),
+        ])
+
     if normalize:
         fixgii = pe.MapNode(NormalizeSurf(), iterfield='in_file', name='fixGIFTI')
         wf.connect([

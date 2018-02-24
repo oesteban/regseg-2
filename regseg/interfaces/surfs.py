@@ -208,8 +208,9 @@ def surf2surf(in_surf, xform_lta, invert=True, newpath=None,
         data=surfgii.darrays[1].data.astype('float32'),
         datatype='NIFTI_TYPE_FLOAT32',
         intent='NIFTI_INTENT_TRIANGLE',
-        meta=meta,
-        coordsys=nb.gifti.GiftiCoordSystem(dataspace='NIFTI_XFORM_UNKNOWN'),
+        coordsys=None,
+        # meta=None,
+        # coordsys=nb.gifti.GiftiCoordSystem(dataspace='NIFTI_XFORM_UNKNOWN'),
     )
 
     out_file = fname_presuffix(in_surf,
