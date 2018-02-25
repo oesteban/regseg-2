@@ -241,6 +241,31 @@ def extract_surfaces_model(model='bold', name='Surfaces', gen_outer=True):
 
     return wf
 
+def model2surfs(name='ModelSurfaces', use_ras_coord=True):
+    inputnode = pe.Node(niu.IdentityInterface(
+        fields=['in_file', 'norm', 'out_name']), name='inputnode')
+    outputnode = pe.Node(niu.IdentityInterface(fields=['out_surf']), name='outputnode')
+    pretess = pe.Node(fs.MRIPretess(label=1), name='PreTess')
+    tess = pe.Node(fs.MRITessellate(label_value=1, use_real_RAS_coordinates=use_ras_coord),
+                   name='tess')
+    smooth = pe.Node(fs.SmoothTessellation(disable_estimates=True),
+                     name='mris_smooth')
+    rename = pe.Node(niu.Rename(keep_ext=False), name='rename')
+    togii = pe.Node(fs.MRIsConvert(out_datatype='gii'), name='toGIFTI')
+
+    wf = pe.Workflow(name=name)
+    wf.connect([
+        (inputnode, pretess, [('in_file', 'in_filled'),
+                              ('norm', 'in_norm')]),
+        (inputnode, rename, [('out_name', 'format_string')]),
+        (pretess, tess, [('out_file', 'in_file')]),
+        (tess, smooth, [('surface', 'in_file')]),
+        (smooth, rename, [('surface', 'in_file')]),
+        (rename, togii, [('out_file', 'in_file')]),
+        (togii, outputnode, [('converted', 'out_surf')]),
+    ])
+    return wf
+
 
 def _read_model(model_name):
     from sys import version_info

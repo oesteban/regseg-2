@@ -5,12 +5,14 @@
 Creating phantoms with shapes
 -----------------------------
 """
-from os import path as op
+import os
 import numpy as np
-import nibabel as nb
+
 from nipype import logging
 from nipype.interfaces.base import (
-    SimpleInterface, traits, File, BaseInterfaceInputSpec, TraitedSpec
+    SimpleInterface, traits, isdefined, File, Directory,
+    BaseInterfaceInputSpec, TraitedSpec,
+    CommandLine, CommandLineInputSpec
 )
 
 from ..misc import generate_nifti, generate_shape
@@ -51,7 +53,7 @@ class Phantom(SimpleInterface):
         if len(size) == 1:
             size = [size[0]] * 3
 
-        self._results['out_file'] = op.join(
+        self._results['out_file'] = os.path.join(
             runtime.cwd, self.inputs.out_file)
         classes = generate_shape(self.inputs.shape, datashape=size,
                                  cortex=self.inputs.cortex)
@@ -61,3 +63,41 @@ class Phantom(SimpleInterface):
         nii = generate_nifti(data)
         nii.to_filename(self._results['out_file'])
         return runtime
+
+
+class SimulateSMRIInputSpec(CommandLineInputSpec):
+    frac_csf = File(exists=True, argstr='--csf_vf %s',
+                    desc='CSF volume fraction')
+    frac_wm = File(exists=True, mandatory=True, argstr='--wm_vf %s',
+                   desc='WM volume fraction')
+    frac_gm = File(exists=True, mandatory=True, argstr='--gm_vf %s',
+                   desc='GM volume fraction')
+    out_dir = Directory(argstr='-o %s', desc='output prefix')
+    snr = traits.Float(0.0, usedefault=True, argstr='--snr %f',
+                       desc='SNR of output images')
+
+
+class SimulateSMRIOutputSpec(TraitedSpec):
+    out_t1w = File(exists=True, desc='output file name')
+    out_t2w = File(exists=True, desc='output file name')
+
+
+class SimulateSMRI(CommandLine):
+
+    """
+    Returns a phantom model
+    """
+    input_spec = SimulateSMRIInputSpec
+    output_spec = SimulateSMRIOutputSpec
+    _cmd = 'phantomas_struct_fiberless'
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+
+        out_dir = os.getcwd()
+        if isdefined(self.inputs.out_dir):
+            out_dir = os.path.abspath(self.inputs.out_dir)
+
+        outputs['out_t1w'] = os.path.join(out_dir, 't1_weighted.nii.gz')
+        outputs['out_t2w'] = os.path.join(out_dir, 't2_weighted.nii.gz')
+        return outputs
